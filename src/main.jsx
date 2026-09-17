@@ -9,6 +9,7 @@ import './ledger.css';
 import './settlement.css';
 import './reports.css';
 import './notifications.css';
+import './ui-overrides.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

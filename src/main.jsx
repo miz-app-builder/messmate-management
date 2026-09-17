@@ -8,6 +8,7 @@ import './finance.css';
 import './ledger.css';
 import './settlement.css';
 import './reports.css';
+import './notifications.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

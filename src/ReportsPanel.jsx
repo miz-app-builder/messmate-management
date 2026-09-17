@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Download, X } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
-const money = v => `৳${Number(v || 0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const money = v => `৳${Number(v || 0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2})`;
 const iso = d => d.toISOString().slice(0,10);
 const today = () => iso(new Date());
 const shift = (date, days) => { const d=new Date(`${date}T00:00:00`); d.setDate(d.getDate()+days); return iso(d); };
@@ -11,11 +11,7 @@ export default function ReportsPanel({ messId, memberId, isManager=false, onClos
   const [period,setPeriod]=useState('month');
   const [start,setStart]=useState(shift(today(),-29));
   const [end,setEnd]=useState(today());
-  const [members,setMembers]=useState([]);
-  const [meals,setMeals]=useState([]);
-  const [bazar,setBazar]=useState([]);
-  const [expenses,setExpenses]=useState([]);
-  const [deposits,setDeposits]=useState([]);
+  const [members,setMembers]=useState([]),[meals,setMeals]=useState([]),[bazar,setBazar]=useState([]),[expenses,setExpenses]=useState([]),[deposits,setDeposits]=useState([]);
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
 
   useEffect(()=>{
@@ -28,7 +24,7 @@ export default function ReportsPanel({ messId, memberId, isManager=false, onClos
     if(!supabase||!messId)return;
     setLoading(true);setError('');
     const memberQuery=supabase.from('mess_members').select('id,status,role,profiles(full_name)').eq('mess_id',messId).in('status',['active','left']);
-    const mealQuery=supabase.from('meal_entries').select('id,member_id,meal_date,status,meal_type_id').eq('meal_date','gte',start).lte('meal_date',end);
+    const mealQuery=supabase.from('meal_entries').select('id,member_id,meal_date,status,meal_type_id').eq('mess_id',messId).gte('meal_date',start).lte('meal_date',end);
     const bazarQuery=supabase.from('bazar_entries').select('id,purchased_on,total_amount,status,buyer_member_id').eq('mess_id',messId).gte('purchased_on',start).lte('purchased_on',end).eq('status','approved');
     const expenseQuery=supabase.from('expenses').select('id,amount,expense_date,status,description').eq('mess_id',messId).gte('expense_date',start).lte('expense_date',end).eq('status','approved');
     const depositQuery=supabase.from('deposits').select('id,member_id,amount,deposited_on,status').eq('mess_id',messId).gte('deposited_on',start).lte('deposited_on',end).eq('status','approved');

@@ -6,6 +6,7 @@ import './meal.css';
 import './bazar.css';
 import './finance.css';
 import './ledger.css';
+import './settlement.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

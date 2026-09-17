@@ -53,7 +53,9 @@ export default function BazarPanel({ messId, memberId, isManager = false, onClos
 
   useEffect(() => { load(); }, [messId, memberId]);
 
-  const canAdd = permission.add;
+  // Managers are implicit full-permission actors; delegated members use their
+  // explicit member_permissions grant.
+  const canAdd = isManager || permission.add;
   const canApprove = permission.approve || isManager;
   const pendingCount = useMemo(() => entries.filter(x => x.status === 'pending').length, [entries]);
   const approvedTotal = useMemo(() => entries.filter(x => x.status === 'approved').reduce((s, x) => s + Number(x.total_amount || 0), 0), [entries]);

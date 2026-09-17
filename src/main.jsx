@@ -1,12 +1,12 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.jsx';
+import AppShell from './AppShell.jsx';
 import './styles.css';
 import './meal.css';
 import './bazar.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <AppShell />
   </React.StrictMode>
 );

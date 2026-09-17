@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart3, Download, X } from 'lucide-react';
 import { supabase } from './lib/supabase';
 
-const money = v => `৳${Number(v || 0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2})`;
+const money = v => `৳${Number(v || 0).toLocaleString('en-BD',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
 const iso = d => d.toISOString().slice(0,10);
 const today = () => iso(new Date());
 const shift = (date, days) => { const d=new Date(`${date}T00:00:00`); d.setDate(d.getDate()+days); return iso(d); };
@@ -11,7 +11,11 @@ export default function ReportsPanel({ messId, memberId, isManager=false, onClos
   const [period,setPeriod]=useState('month');
   const [start,setStart]=useState(shift(today(),-29));
   const [end,setEnd]=useState(today());
-  const [members,setMembers]=useState([]),[meals,setMeals]=useState([]),[bazar,setBazar]=useState([]),[expenses,setExpenses]=useState([]),[deposits,setDeposits]=useState([]);
+  const [members,setMembers]=useState([]);
+  const [meals,setMeals]=useState([]);
+  const [bazar,setBazar]=useState([]);
+  const [expenses,setExpenses]=useState([]);
+  const [deposits,setDeposits]=useState([]);
   const [loading,setLoading]=useState(true),[error,setError]=useState('');
 
   useEffect(()=>{

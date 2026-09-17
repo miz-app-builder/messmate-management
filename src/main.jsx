@@ -4,6 +4,7 @@ import AppShell from './AppShell.jsx';
 import './styles.css';
 import './meal.css';
 import './bazar.css';
+import './finance.css';
 
 createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -30,17 +30,21 @@ export default function BazarPanel({ messId, memberId, isManager = false, onClos
   const load = async () => {
     if (!supabase || !messId) return;
     setError('');
-    const [{ data: e, error: ee }, { data: s, error: se }, { data: mi, error: me }] = await Promise.all([
+    const [{ data: e, error: ee }, { data: s, error: se }] = await Promise.all([
       supabase.from('bazar_entries').select('id,buyer_member_id,purchased_on,total_amount,status,note,receipt_url,approved_at,approved_by,created_at,updated_at').eq('mess_id', messId).order('purchased_on', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('mess_settings').select('bazar_approval_required').eq('mess_id', messId).maybeSingle(),
-      supabase.from('bazar_items').select('id,bazar_entry_id,item_name,quantity,unit,unit_price').in('bazar_entry_id', (e || []).map(x => x.id)),
     ]);
-    if (ee || se || me) setError((ee || se || me).message);
+    if (ee || se) setError((ee || se).message);
     setEntries(e || []);
     setApprovalRequired(s?.bazar_approval_required ?? true);
-    const grouped = {};
-    (mi || []).forEach(x => { (grouped[x.bazar_entry_id] ||= []).push(x); });
-    setItems(grouped);
+    const ids = (e || []).map(x => x.id);
+    if (ids.length) {
+      const { data: mi, error: me } = await supabase.from('bazar_items').select('id,bazar_entry_id,item_name,quantity,unit,unit_price').in('bazar_entry_id', ids);
+      if (me) setError(me.message);
+      const grouped = {};
+      (mi || []).forEach(x => { (grouped[x.bazar_entry_id] ||= []).push(x); });
+      setItems(grouped);
+    } else setItems({});
     if (memberId) {
       const { data: mp } = await supabase.from('member_permissions').select('can_add_bazar,can_approve_bazar').eq('mess_member_id', memberId).maybeSingle();
       setPermission({ add: Boolean(mp?.can_add_bazar), approve: Boolean(mp?.can_approve_bazar) });
@@ -81,23 +85,35 @@ export default function BazarPanel({ messId, memberId, isManager = false, onClos
     e.preventDefault();
     if (!supabase) return;
     setBusy(true); setError(''); setMessage('');
-    let result;
+
     if (editing) {
       const currentTotal = (items[editing.id] || []).reduce((s, x) => s + Number(x.quantity || 0) * Number(x.unit_price || 0), 0);
-      result = await supabase.rpc('update_bazar_entry', { p_entry_id: editing.id, p_purchased_on: form.purchased_on, p_total_amount: currentTotal, p_note: form.note || null, p_receipt_url: form.receipt_url || null });
-    } else {
-      result = await supabase.rpc('create_bazar_entry', { p_mess_id: messId, p_purchased_on: form.purchased_on, p_total_amount: 0, p_note: form.note || null, p_receipt_url: form.receipt_url || null });
+      const result = await supabase.rpc('update_bazar_entry', { p_entry_id: editing.id, p_purchased_on: form.purchased_on, p_total_amount: currentTotal, p_note: form.note || null, p_receipt_url: form.receipt_url || null });
+      setBusy(false);
+      if (result.error) { setError(result.error.message); return; }
+      setMessage('Bazar entry updated.');
+      setEditing(null); setForm(emptyForm()); setItemForm(emptyItem()); await load();
+      return;
     }
+
+    // New entries are created atomically with their first item. This prevents
+    // approval-off mode from creating an empty already-approved entry.
+    const qty = Number(itemForm.quantity), price = Number(itemForm.unit_price);
+    if (!itemForm.item_name.trim()) { setBusy(false); setError('Item name is required.'); return; }
+    if (!Number.isFinite(qty) || qty <= 0) { setBusy(false); setError('Quantity must be greater than zero.'); return; }
+    if (!Number.isFinite(price) || price < 0) { setBusy(false); setError('Unit price cannot be negative.'); return; }
+
+    const result = await supabase.rpc('create_bazar_entry_with_items', {
+      p_mess_id: messId,
+      p_purchased_on: form.purchased_on,
+      p_note: form.note || null,
+      p_receipt_url: form.receipt_url || null,
+      p_items: [{ item_name: itemForm.item_name.trim(), quantity: qty, unit: itemForm.unit.trim() || null, unit_price: price }],
+    });
     setBusy(false);
     if (result.error) { setError(result.error.message); return; }
-    const entryId = result.data;
-    setMessage(editing ? 'Bazar entry updated.' : 'Bazar entry created. Add item lines below.');
-    setEditing(null);
-    setForm(emptyForm());
-    await load();
-    if (!editing && entryId) {
-      setEditing({ id: entryId });
-    }
+    setMessage(approvalRequired ? 'Bazar entry created and sent for approval.' : 'Bazar entry created and approved.');
+    setForm(emptyForm()); setItemForm(emptyItem()); setEditing(null); await load();
   }
 
   async function review(entry, decision) {
@@ -131,9 +147,14 @@ export default function BazarPanel({ messId, memberId, isManager = false, onClos
         <div className="form-heading"><b>{editing ? 'Edit bazar entry' : 'New bazar entry'}</b>{editing && <button type="button" className="text-button" onClick={() => { setEditing(null); setForm(emptyForm()); setItemForm(emptyItem()); }}>Close editor</button>}</div>
         <div className="form-grid">
           <label>Purchase date<input type="date" value={form.purchased_on} onChange={e => setForm({ ...form, purchased_on: e.target.value })} required /></label>
+          <label>Item name<input value={itemForm.item_name} onChange={e => setItemForm({ ...itemForm, item_name: e.target.value })} placeholder="Rice" required={!editing} /></label>
+          <label>Qty<input type="number" min="0.001" step="0.001" value={itemForm.quantity} onChange={e => setItemForm({ ...itemForm, quantity: e.target.value })} /></label>
+          <label>Unit<input value={itemForm.unit} onChange={e => setItemForm({ ...itemForm, unit: e.target.value })} placeholder="kg" /></label>
+          <label>Unit price<input type="number" min="0" step="0.01" value={itemForm.unit_price} onChange={e => setItemForm({ ...itemForm, unit_price: e.target.value })} placeholder="0.00" required={!editing} /></label>
           <label className="wide-field">Note <span className="optional">Optional</span><input value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} placeholder="e.g. Weekly grocery" /></label>
           <label className="wide-field">Receipt URL <span className="optional">Optional</span><input type="url" value={form.receipt_url} onChange={e => setForm({ ...form, receipt_url: e.target.value })} placeholder="https://…" /></label>
         </div>
+        {!editing && <div className="item-total-preview">Line total: <b>{money(draftItemTotal)}</b></div>}
         <button className="primary" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save entry details' : <><Plus size={16} /> Create bazar entry</>}</button>
       </form>}
 
@@ -152,7 +173,7 @@ export default function BazarPanel({ messId, memberId, isManager = false, onClos
           return <div className="bazar-entry" key={entry.id}>
             <div className="bazar-entry-main"><div><b>{money(entry.total_amount)}</b><span>{entry.purchased_on} · {entry.note || 'No note'}</span></div><StatusBadge status={entry.status} /></div>
             {entryItems.length > 0 && <div className="bazar-items"><div className="bazar-items-head"><b>Items</b><strong>{money(calculatedTotal)}</strong></div>{entryItems.map(item => <div className="bazar-item" key={item.id}><div><b>{item.item_name}</b><span>{item.quantity} {item.unit || ''} × {money(item.unit_price)}</span></div>{canEdit && <button className="icon-button" disabled={busy} title="Delete item" onClick={() => deleteItem(item)}><Trash2 size={15} /></button>}</div>)}</div>}
-            {editing?.id === entry.id && canEdit && entry.status !== 'approved' && <div className="bazar-item-form"><div className="item-form-title"><b>Add item</b><span>Line total: {money(draftItemTotal)}</span></div><div className="form-grid"><label>Item name<input value={itemForm.item_name} onChange={e => setItemForm({ ...itemForm, item_name: e.target.value })} placeholder="Rice" /></label><label>Qty<input type="number" min="0.001" step="0.001" value={itemForm.quantity} onChange={e => setItemForm({ ...itemForm, quantity: e.target.value })} /></label><label>Unit<input value={itemForm.unit} onChange={e => setItemForm({ ...itemForm, unit: e.target.value })} placeholder="kg" /></label><label>Unit price<input type="number" min="0" step="0.01" value={itemForm.unit_price} onChange={e => setItemForm({ ...itemForm, unit_price: e.target.value })} placeholder="0.00" /></label></div><button type="button" className="primary" disabled={busy} onClick={() => addItem(entry.id)}><Plus size={16} /> Add item</button></div>}
+            {editing?.id === entry.id && canEdit && entry.status !== 'approved' && <div className="bazar-item-form"><div className="item-form-title"><b>Add item to entry</b><span>Line total: {money(draftItemTotal)}</span></div><div className="form-grid"><label>Item name<input value={itemForm.item_name} onChange={e => setItemForm({ ...itemForm, item_name: e.target.value })} placeholder="Rice" /></label><label>Qty<input type="number" min="0.001" step="0.001" value={itemForm.quantity} onChange={e => setItemForm({ ...itemForm, quantity: e.target.value })} /></label><label>Unit<input value={itemForm.unit} onChange={e => setItemForm({ ...itemForm, unit: e.target.value })} placeholder="kg" /></label><label>Unit price<input type="number" min="0" step="0.01" value={itemForm.unit_price} onChange={e => setItemForm({ ...itemForm, unit_price: e.target.value })} placeholder="0.00" /></label></div><button type="button" className="primary" disabled={busy} onClick={() => addItem(entry.id)}><Plus size={16} /> Add item</button></div>}
             <div className="bazar-entry-actions">{entry.receipt_url && <a href={entry.receipt_url} target="_blank" rel="noreferrer">Receipt</a>}{canEdit && <button className="outline" disabled={busy} onClick={() => startEdit(entry)}>{editing?.id === entry.id ? 'Editing' : 'Edit'}</button>}{canApprove && entry.status === 'pending' && <><button className="reject" disabled={busy} onClick={() => review(entry, 'rejected')}>Reject</button><button className="approve" disabled={busy} onClick={() => review(entry, 'approved')}><Check size={14} /> Approve</button></>}</div>
           </div>;
         })}
